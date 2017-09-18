@@ -106,12 +106,16 @@ namespace PixelParser.Palette
 
         public List<Color> Generate(
             int colorsCount = 8,
-            Predicate<object> checkColor,
+            Predicate<LabColor> checkColor = null,
             bool forceMode = false,
             int quality = 50,
             bool ultraPrecision = false,
             ColorDistance distanceType = ColorDistance.Default)
         {
+            if (checkColor == null)
+            {
+                checkColor = (lab) => { return true; };
+            }
             if (forceMode)
             {
                 return GenerateForceVectorMode(colorsCount, checkColor, quality, ultraPrecision, distanceType);
@@ -122,12 +126,161 @@ namespace PixelParser.Palette
             }
         }
 
-        private List<Color> GenerateKMeanMode(int colorsCount, Predicate<object> checkColor, int quality, bool ultraPrecision, ColorDistance distanceType)
+        private List<Color> GenerateKMeanMode(int colorsCount,
+            Predicate<LabColor> checkColor,
+            int quality, bool ultraPrecision, ColorDistance distanceType)
         {
-            throw new NotImplementedException();
+            var kMeans = new List<LabColor>();
+            for (var i = 0; i < colorsCount; i++)
+            {
+                var lab = LabColor.GetRandom();
+                while (!ValidateLab(lab))
+                {
+                    lab = LabColor.GetRandom();
+                }
+                kMeans.Add(lab);
+            }
+
+
+            var colorSamples = new List<LabColor>();
+            var samplesClosest = new List<int?>();
+            if (ultraPrecision)
+            {
+                for (var l = 0; l <= 100; l += 1)
+                {
+                    for (var a = -100; a <= 100; a += 5)
+                    {
+                        for (var b = -100; b <= 100; b += 5)
+                        {
+                            var color = new LabColor(l, a, b);
+                            if (ValidateLab(color) && checkColor(color))
+                            {
+                                colorSamples.Add(color);
+                                samplesClosest.Add(null);
+                            }
+                        }
+                    }
+                }
+            }
+            else
+            {
+                for (var l = 0; l <= 100; l += 5)
+                {
+                    for (var a = -100; a <= 100; a += 10)
+                    {
+                        for (var b = -100; b <= 100; b += 10)
+                        {
+                            var color = new LabColor(l, a, b);
+                            if (ValidateLab(color) && checkColor(color))
+                            {
+                                colorSamples.Add(color);
+                                samplesClosest.Add(null);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Steps
+            var steps = quality;
+            while (steps-- > 0)
+            {
+                // kMeans -> Samples Closest
+                for (var i = 0; i < colorSamples.Count; i++)
+                {
+                    var lab = colorSamples[i];
+                    var minDistance = double.MaxValue;
+                    for (var j = 0; j < kMeans.Count; j++)
+                    {
+                        var kMean = kMeans[j];
+                        var distance = GetColorDistance(lab, kMean, distanceType);
+                        if (distance < minDistance)
+                        {
+                            minDistance = distance;
+                            samplesClosest[i] = j;
+                        }
+                    }
+                }
+                // Samples -> kMeans
+                var freeColorSamples = colorSamples
+                    .Select((lab) => (LabColor)lab.Clone()) // todo do I really need clone each item?
+                    .ToList();
+                for (var j = 0; j < kMeans.Count; j++)
+                {
+                    var count = 0;
+                    var candidateKMean = new LabColor();
+                    for (var i = 0; i < colorSamples.Count; i++)
+                    {
+                        if (samplesClosest[i] == j)
+                        {
+                            count++;
+                            var color = colorSamples[i];
+                            candidateKMean.L += color.L;
+                            candidateKMean.A += color.A;
+                            candidateKMean.B += color.B;
+                        }
+                    }
+                    if (count != 0)
+                    {
+                        candidateKMean.L /= count;
+                        candidateKMean.A /= count;
+                        candidateKMean.B /= count;
+                    }
+
+                    if (count != 0 && ValidateLab(candidateKMean) && checkColor(candidateKMean))
+                    {
+                        kMeans[j] = candidateKMean;
+                    }
+                    else
+                    {
+                        // The candidate kMean is out of the boundaries of the color space, or unfound.
+                        if (freeColorSamples.Count > 0)
+                        {
+                            // We just search for the closest FREE color of the candidate kMean
+                            var minDistance = double.MaxValue;
+                            var closest = -1;
+                            for (var i = 0; i < freeColorSamples.Count; i++)
+                            {
+                                var distance = GetColorDistance(freeColorSamples[i], candidateKMean, distanceType);
+                                if (distance < minDistance)
+                                {
+                                    minDistance = distance;
+                                    closest = i;
+                                }
+                            }
+                            kMeans[j] = colorSamples[closest];
+                        }
+                        else
+                        {
+                            // Then we just search for the closest color of the candidate kMean
+                            var minDistance = double.MaxValue;
+                            var closest = -1;
+                            for (var i = 0; i < colorSamples.Count; i++)
+                            {
+                                var distance = GetColorDistance(colorSamples[i], candidateKMean, distanceType);
+                                if (distance < minDistance)
+                                {
+                                    minDistance = distance;
+                                    closest = i;
+                                }
+                            }
+                            kMeans[j] = colorSamples[closest];
+                        }
+                    }
+                    var baseColor = kMeans[j];
+                    freeColorSamples = freeColorSamples
+                        .Where((lab) => !lab.Equals(baseColor))
+                        .ToList();
+                }
+            }
+            return kMeans.Select((lab) => lab.ToRgb()).ToList();
         }
 
-        private List<Color> GenerateForceVectorMode(int colorsCount, Predicate<object> checkColor, int quality, bool ultraPrecision, ColorDistance distanceType)
+        private List<Color> GenerateForceVectorMode(int colorsCount,
+            Predicate<LabColor> checkColor,
+            int quality,
+            bool ultraPrecision,
+            ColorDistance distanceType)
         {
             var random = new Random();
             var colors = new List<LabColor>();
@@ -136,16 +289,10 @@ namespace PixelParser.Palette
             for (var i = 0; i < colorsCount; i++)
             {
                 // Find a valid Lab color
-                var l = 100 * random.NextDouble();
-                var a = 100 * (2 * random.NextDouble() - 1);
-                var b = 100 * (2 * random.NextDouble() - 1);
-                var color = new LabColor(l, a, b);
+                var color = LabColor.GetRandom();
                 while (!ValidateLab(color) || !checkColor(color))
                 {
-                    l = 100 * random.NextDouble();
-                    a = 100 * (2 * random.NextDouble() - 1);
-                    b = 100 * (2 * random.NextDouble() - 1);
-                    color = new LabColor(l, a, b);
+                    color = LabColor.GetRandom();
                 }
                 colors.Add(color);
             }
@@ -208,7 +355,7 @@ namespace PixelParser.Palette
                         var a = color.A + vectors[i].dA * ratio;
                         var b = color.B + vectors[i].dB * ratio;
                         var candidateLab = new LabColor(l, a, b);
-                        if (CheckLab(candidateLab))
+                        if (ValidateLab(candidateLab) && checkColor(candidateLab))
                         {
                             colors[i] = candidateLab;
                         }
@@ -347,8 +494,9 @@ namespace PixelParser.Palette
             var fit_g = ((dg < 0.0 ? 0.0 : 1.0) - dg) / diff_g;
             var fit_b = ((db < 0.0 ? 0.0 : 1.0) - db) / diff_b;
             var adjust = Math.Max( // highest value
-                (fit_r > 1.0 || fit_r < 0.0) ? 0.0 : fit_r,
-                (fit_g > 1.0 || fit_g < 0.0) ? 0.0 : fit_g,
+                Math.Max(
+                    (fit_r > 1.0 || fit_r < 0.0) ? 0.0 : fit_r,
+                    (fit_g > 1.0 || fit_g < 0.0) ? 0.0 : fit_g),
                 (fit_b > 1.0 || fit_b < 0.0) ? 0.0 : fit_b
             );
             // Shift proportional to the greatest shift
@@ -399,11 +547,6 @@ namespace PixelParser.Palette
                 count += coeffs[i];
             }
             return total / count;
-        }
-
-        private bool CheckLab(LabColor lab)
-        {
-            return ValidateLab(lab);// && CheckColor(lab.ToRgb());
         }
 
         /// <summary>

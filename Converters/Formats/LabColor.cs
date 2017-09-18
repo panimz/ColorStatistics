@@ -4,8 +4,17 @@ using System.Drawing;
 namespace PixelParser.Converters.Formats
 {
     [Serializable]
-    public struct LabColor
+    public struct LabColor: ICloneable
     {
+        private static Random random = new Random();
+
+        public static LabColor GetRandom() {
+            var l = 100 * random.NextDouble();
+            var a = 100 * (2 * random.NextDouble() - 1);
+            var b = 100 * (2 * random.NextDouble() - 1);
+            return new LabColor(l, a, b);
+        }
+
         public LabColor(double l, double a, double b)
         {
             L = l;
@@ -75,6 +84,11 @@ namespace PixelParser.Converters.Formats
             return L == other.L && A == other.A && B == other.B;
         }
 
+        public override int GetHashCode()
+        {
+            return L.GetHashCode() ^ A.GetHashCode() ^ B.GetHashCode();
+        }
+
         public override string ToString()
         {
             return string.Format("[L = {0}, A = {1}, B = {2}]", L, A, B);
@@ -85,6 +99,11 @@ namespace PixelParser.Converters.Formats
             return double.IsNaN(L) ||
                 double.IsNaN(A) ||
                 double.IsNaN(B);
+        }
+
+        public object Clone()
+        {
+            return new LabColor(L, A, B);
         }
     }
 }
