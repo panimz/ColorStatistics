@@ -10,107 +10,17 @@ namespace PixelParser.Palette
     // port chroma.palette-gen.js certed by 2016  Mathieu Jacomy
     // https://github.com/medialab/iwanthue/blob/master/js/libs/chroma.palette-gen.js
 
-    public static class LAB_CONSTANTS
-    {
-        // Corresponds roughly to RGB brighter/darker
-        public static int Kn = 18;
-
-        // D65 standard referent
-        public static double Xn = 0.950470;
-        public static double Yn = 1;
-        public static double Zn = 1.088830;
-
-        public static double t0 = 0.137931034; // 4 / 29
-        public static double t1 = 0.206896552;  // 6 / 29
-        public static double t2 = 0.12841855;   // 3 * t1 * t1
-        public static double t3 = 0.008856452;  // t1 * t1 * t1
-    }
-
-    enum ColorDistance
-    {
-        Default,
-        Euclidian,
-        CMC,
-        Compromise,
-        Protanope,
-        Deuteranope,
-        Tritanope
-    }
-
-    class LabVector
-    {
-        public LabVector()
-        {
-            dL = 0.0;
-            dA = 0.0;
-            dB = 0.0;
-        }
-
-        public LabVector(double dl, double da, double db)
-        {
-            dL = dl;
-            dA = da;
-            dB = db;
-        }
-
-        public double dL { get; set; }
-        public double dA { get; set; }
-        public double dB { get; set; }
-        public double Magnitude
-        {
-            get { return Math.Sqrt(dL * dL + dB * dB + dA * dA); }
-        }
-    }
-
-    class ConfusionLine
-    {
-        public double X;
-        public double Y;
-        public double M;
-        public double Yint;
-    }
-
-    class GeneratorNew
+    public class GeneratorNew
     {
         private Dictionary<string, LabColor> simulateCache = new Dictionary<string, LabColor>();
 
-        private static Dictionary<ColorDistance, ConfusionLine> confusionLines = new Dictionary<ColorDistance, ConfusionLine>() {
-            {
-                ColorDistance.Protanope,
-                new ConfusionLine() {
-                    X = 0.7465,
-                    Y = 0.2535,
-                    M = 1.273463,
-                    Yint = -0.073894
-                }
-            },
-            {
-                ColorDistance.Deuteranope,
-                new ConfusionLine() {
-                    X = 1.4,
-                    Y = -0.4,
-                    M = 0.968437,
-                    Yint = 0.003331
-                }
-            },
-            {
-                ColorDistance.Tritanope,
-                new ConfusionLine() {
-                    X = 0.1748,
-                    Y = 0.0,
-                    M = 0.062921,
-                    Yint = 0.292119
-                }
-            }
-        };
-
-        public List<Color> Generate(
+        public Color[] Generate(
             int colorsCount = 8,
             Predicate<LabColor> checkColor = null,
             bool forceMode = false,
             int quality = 50,
             bool ultraPrecision = false,
-            ColorDistance distanceType = ColorDistance.Default)
+            ColorDistanceType distanceType = ColorDistanceType.Default)
         {
             if (checkColor == null)
             {
@@ -126,9 +36,10 @@ namespace PixelParser.Palette
             }
         }
 
-        private List<Color> GenerateKMeanMode(int colorsCount,
+        private Color[] GenerateKMeanMode(int colorsCount,
             Predicate<LabColor> checkColor,
-            int quality, bool ultraPrecision, ColorDistance distanceType)
+            int quality, bool ultraPrecision, 
+            ColorDistanceType distanceType)
         {
             var kMeans = new List<LabColor>();
             for (var i = 0; i < colorsCount; i++)
@@ -141,52 +52,20 @@ namespace PixelParser.Palette
                 kMeans.Add(lab);
             }
 
+            var lStep = ultraPrecision ? 1 : 5;
+            var aStep = ultraPrecision ? 5 : 10;
+            var bStep = ultraPrecision ? 5 : 10;
 
-            var colorSamples = new List<LabColor>();
-            var samplesClosest = new List<int?>();
-            if (ultraPrecision)
-            {
-                for (var l = 0; l <= 100; l += 1)
-                {
-                    for (var a = -100; a <= 100; a += 5)
-                    {
-                        for (var b = -100; b <= 100; b += 5)
-                        {
-                            var color = new LabColor(l, a, b);
-                            if (ValidateLab(color) && checkColor(color))
-                            {
-                                colorSamples.Add(color);
-                                samplesClosest.Add(null);
-                            }
-                        }
-                    }
-                }
-            }
-            else
-            {
-                for (var l = 0; l <= 100; l += 5)
-                {
-                    for (var a = -100; a <= 100; a += 10)
-                    {
-                        for (var b = -100; b <= 100; b += 10)
-                        {
-                            var color = new LabColor(l, a, b);
-                            if (ValidateLab(color) && checkColor(color))
-                            {
-                                colorSamples.Add(color);
-                                samplesClosest.Add(null);
-                            }
-                        }
-                    }
-                }
-            }
+            var colorSamples = GenerateColorSamples(checkColor, lStep, aStep, bStep);
 
             // Steps
             var steps = quality;
+            var samplesCount = colorSamples.Count;
+            var samplesClosest = new int?[samplesCount];
             while (steps-- > 0)
             {
                 // kMeans -> Samples Closest
-                for (var i = 0; i < colorSamples.Count; i++)
+                for (var i = 0; i < samplesCount; i++)
                 {
                     var lab = colorSamples[i];
                     var minDistance = double.MaxValue;
@@ -273,17 +152,38 @@ namespace PixelParser.Palette
                         .ToList();
                 }
             }
-            return kMeans.Select((lab) => lab.ToRgb()).ToList();
+            return kMeans.Select((lab) => lab.ToRgb()).ToArray();
         }
 
-        private List<Color> GenerateForceVectorMode(int colorsCount,
+        private List<LabColor> GenerateColorSamples(Predicate<LabColor> checkColor, 
+            int lStep, int aStep, int bStep)
+        {
+            var colorSamples = new List<LabColor>();
+            for (var l = 0; l <= 100; l += lStep)
+            {
+                for (var a = -100; a <= 100; a += aStep)
+                {
+                    for (var b = -100; b <= 100; b += bStep)
+                    {
+                        var color = new LabColor(l, a, b);
+                        if (ValidateLab(color) && checkColor(color))
+                        {
+                            colorSamples.Add(color);
+                        }
+                    }
+                }
+            }
+            return colorSamples;
+        }
+
+        private Color[] GenerateForceVectorMode(int colorsCount,
             Predicate<LabColor> checkColor,
             int quality,
             bool ultraPrecision,
-            ColorDistance distanceType)
+            ColorDistanceType distanceType)
         {
             var random = new Random();
-            var colors = new List<LabColor>();
+            var colors = new LabColor[colorsCount];
 
             // Init
             for (var i = 0; i < colorsCount; i++)
@@ -294,23 +194,23 @@ namespace PixelParser.Palette
                 {
                     color = LabColor.GetRandom();
                 }
-                colors.Add(color);
+                colors[i] = color;
             }
 
             // Force vector: repulsion
             var repulsion = 100;
             var speed = 100;
             var steps = quality * 20;
-            var vectors = new List<LabVector>();
+            var vectors = new LabVector[colorsCount];
             while (steps-- > 0)
             {
                 // Init
-                for (var i = 0; i < colors.Count; i++)
+                for (var i = 0; i < colors.Length; i++)
                 {
                     vectors[i] = new LabVector();
                 }
                 // Compute Force
-                for (var i = 0; i < colors.Count; i++)
+                for (var i = 0; i < colors.Length; i++)
                 {
                     var colorA = colors[i];
                     for (var j = 0; j < i; j++)
@@ -344,7 +244,7 @@ namespace PixelParser.Palette
                     }
                 }
                 // Apply Force
-                for (var i = 0; i < colors.Count; i++)
+                for (var i = 0; i < colors.Length; i++)
                 {
                     var color = colors[i];
                     var displacement = speed * vectors[i].Magnitude; ;
@@ -363,23 +263,23 @@ namespace PixelParser.Palette
                 }
             }
 
-            return colors.Select((lab) => lab.ToRgb()).ToList();
+            return colors.Select((lab) => lab.ToRgb()).ToArray();
         }
 
         private double GetColorDistance(
             LabColor lab1,
             LabColor lab2,
-            ColorDistance type = ColorDistance.Default)
+            ColorDistanceType type = ColorDistanceType.Default)
         {
 
             switch (type)
             {
-                case ColorDistance.Default:
-                case ColorDistance.Euclidian:
+                case ColorDistanceType.Default:
+                case ColorDistanceType.Euclidian:
                     return EuclidianDistance(lab1, lab2);
-                case ColorDistance.CMC:
+                case ColorDistanceType.CMC:
                     return CmcDistance(lab1, lab2);
-                case ColorDistance.Compromise:
+                case ColorDistanceType.Compromise:
                     return CompromiseDistance(lab1, lab2);
                 default:
                     return DistanceColorBlind(lab1, lab2, type);
@@ -396,7 +296,7 @@ namespace PixelParser.Palette
 
         private double DistanceColorBlind(LabColor lab1,
             LabColor lab2,
-            ColorDistance type)
+            ColorDistanceType type)
         {
             var lab1Cb = Simulate(lab1, type);
             var lab2Cb = Simulate(lab2, type);
@@ -433,7 +333,7 @@ namespace PixelParser.Palette
         }
 
         // WARNING: may return [NaN, NaN, NaN]
-        private LabColor Simulate(LabColor lab, ColorDistance type, int amount = 1)
+        private LabColor Simulate(LabColor lab, ColorDistanceType type, int amount = 1)
         {
 
             // Cache
@@ -444,10 +344,7 @@ namespace PixelParser.Palette
             }
 
             // Get data from type
-            var confuse_x = confusionLines[type].X;
-            var confuse_y = confusionLines[type].Y;
-            var confuse_m = confusionLines[type].M;
-            var confuse_yint = confusionLines[type].Yint;
+            var confuse = ConfusionLine.Get(type);
 
             // Code adapted from http://galacticmilk.com/labs/Color-Vision/Javascript/Color.Vision.Simulate.js
             var color = lab.ToRgb();
@@ -468,10 +365,10 @@ namespace PixelParser.Palette
             var chroma_x = X / (X + Y + Z);
             var chroma_y = Y / (X + Y + Z);
             // Generate the "Confusion Line" between the source color and the Confusion Point
-            var m = (chroma_y - confuse_y) / (chroma_x - confuse_x); // slope of Confusion Line
+            var m = (chroma_y - confuse.Y) / (chroma_x - confuse.X); // slope of Confusion Line
             var yint = chroma_y - chroma_x * m; // y-intercept of confusion line (x-intercept = 0.0)
                                                 // How far the xy coords deviate from the simulation
-            var deviate_x = (confuse_yint - yint) / (m - confuse_m);
+            var deviate_x = (confuse.Yint - yint) / (m - confuse.M);
             var deviate_y = (m * deviate_x) + yint;
             // Compute the simulated color's XYZ coords
             X = deviate_x * Y / deviate_y;
@@ -524,10 +421,10 @@ namespace PixelParser.Palette
         {
             var distances = new List<double>() { CmcDistance(lab1, lab2) };
             var coeffs = new List<int>() { 1000 };
-            var types = new Dictionary<ColorDistance, int> {
-                                { ColorDistance.Protanope, 100 },
-                                { ColorDistance.Deuteranope, 500},
-                                { ColorDistance.Tritanope, 1}
+            var types = new Dictionary<ColorDistanceType, int> {
+                                { ColorDistanceType.Protanope, 100 },
+                                { ColorDistanceType.Deuteranope, 500},
+                                { ColorDistanceType.Tritanope, 1}
                             };
             foreach (var type in types)
             {
@@ -560,9 +457,9 @@ namespace PixelParser.Palette
             var x = (double.IsNaN(lab.A)) ? (y) : (y + lab.A / 500);
             var z = (double.IsNaN(lab.B)) ? (y) : (y - lab.B / 200);
 
-            y = LAB_CONSTANTS.Yn * lab2xyz(y);
-            x = LAB_CONSTANTS.Xn * lab2xyz(x);
-            z = LAB_CONSTANTS.Zn * lab2xyz(z);
+            y = LabConstants.Yn * lab2xyz(y);
+            x = LabConstants.Xn * lab2xyz(x);
+            z = LabConstants.Zn * lab2xyz(z);
 
             var r = xyz2rgb(3.2404542 * x - 1.5371385 * y - 0.4985314 * z);  // D65 -> sRGB
             var g = xyz2rgb(-0.9692660 * x + 1.8760108 * y + 0.0415560 * z);
@@ -583,9 +480,9 @@ namespace PixelParser.Palette
 
         private double lab2xyz(double t)
         {
-            return (t > LAB_CONSTANTS.t1) ?
+            return (t > LabConstants.t1) ?
                 (t * t * t) :
-                (LAB_CONSTANTS.t2 * (t - LAB_CONSTANTS.t0));
+                (LabConstants.t2 * (t - LabConstants.t0));
         }
     }
 }

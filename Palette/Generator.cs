@@ -145,7 +145,6 @@ namespace PixelParser.Palette
                     for (double l = options.LightMin; l <= options.LightMax; l += lStep)
                     {
                         var color = new HclColor(h, c, l).ToLab();
-                        Console.WriteLine(color.ToString());
                         if (CheckColor(color, options))
                         {
                             samples.Add(color);
