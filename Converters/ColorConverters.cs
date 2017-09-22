@@ -23,12 +23,25 @@ namespace PixelParser.Converters
             return new LabColor(l, a, b);
         }
 
+        public static XyzColor ToXyz(this Color color)
+        {
+            var r = ToXyzChannel(color.R);
+            var g = ToXyzChannel(color.G);
+            var b = ToXyzChannel(color.B);
+
+            var x = ToLabChannel(0.4124564 * r + 0.3575761 * g + 0.1804375 * b) / LabConstants.Xn;
+            var y = ToLabChannel(0.2126729 * r + 0.7151522 * g + 0.0721750 * b) / LabConstants.Yn;
+            var z = ToLabChannel(0.0193339 * r + 0.1191920 * g + 0.9503041 * b) / LabConstants.Zn;
+
+            return new XyzColor(x, y, z);
+        }
+
         private static double ToXyzChannel(byte channel)
         {
             var c = channel / 255.0;
             return (c < 0.04045) ?
                 (c / 12.92) :
-                Math.Pow((c + 0.055) / 1.055f, 2.4);
+                Math.Pow((c + 0.055) / 1.055, 2.4);
         }
 
         private static double ToLabChannel(double channel)
