@@ -45,7 +45,7 @@ namespace PixelParser.Palette
             for (var i = 0; i < colorsCount; i++)
             {
                 var lab = LabColor.GetRandom();
-                while (!ValidateLab(lab))
+                while (!lab.IsValidRgb())
                 {
                     lab = LabColor.GetRandom();
                 }
@@ -106,7 +106,7 @@ namespace PixelParser.Palette
                         candidateKMean.B /= count;
                     }
 
-                    if (count != 0 && ValidateLab(candidateKMean) && checkColor(candidateKMean))
+                    if (count != 0 && candidateKMean.IsValidRgb() && checkColor(candidateKMean))
                     {
                         kMeans[j] = candidateKMean;
                     }
@@ -166,7 +166,7 @@ namespace PixelParser.Palette
                     for (var b = -100; b <= 100; b += bStep)
                     {
                         var color = new LabColor(l, a, b);
-                        if (ValidateLab(color) && checkColor(color))
+                        if (color.IsValidRgb() && checkColor(color))
                         {
                             colorSamples.Add(color);
                         }
@@ -190,7 +190,7 @@ namespace PixelParser.Palette
             {
                 // Find a valid Lab color
                 var color = LabColor.GetRandom();
-                while (!ValidateLab(color) || !checkColor(color))
+                while (color.IsValidRgb() || !checkColor(color))
                 {
                     color = LabColor.GetRandom();
                 }
@@ -255,7 +255,7 @@ namespace PixelParser.Palette
                         var a = color.A + vectors[i].dA * ratio;
                         var b = color.B + vectors[i].dB * ratio;
                         var candidateLab = new LabColor(l, a, b);
-                        if (ValidateLab(candidateLab) && checkColor(candidateLab))
+                        if (candidateLab.IsValidRgb() && checkColor(candidateLab))
                         {
                             colors[i] = candidateLab;
                         }
@@ -444,45 +444,6 @@ namespace PixelParser.Palette
                 count += coeffs[i];
             }
             return total / count;
-        }
-
-        /// <summary>
-        ///  check if a Lab color exists in the rgb space
-        /// </summary>
-        /// <param name="lab"></param>
-        /// <returns></returns>
-        private bool ValidateLab(LabColor lab)
-        {
-            var y = (lab.L + 16) / 116;
-            var x = (double.IsNaN(lab.A)) ? (y) : (y + lab.A / 500);
-            var z = (double.IsNaN(lab.B)) ? (y) : (y - lab.B / 200);
-
-            y = LabConstants.Yn * lab2xyz(y);
-            x = LabConstants.Xn * lab2xyz(x);
-            z = LabConstants.Zn * lab2xyz(z);
-
-            var r = xyz2rgb(3.2404542 * x - 1.5371385 * y - 0.4985314 * z);  // D65 -> sRGB
-            var g = xyz2rgb(-0.9692660 * x + 1.8760108 * y + 0.0415560 * z);
-            var b = xyz2rgb(0.0556434 * x - 0.2040259 * y + 1.0572252 * z);
-
-            return r >= 0 && r <= 255
-                 && g >= 0 && g <= 255
-                 && b >= 0 && b <= 255;
-        }
-
-        private int xyz2rgb(double channel)
-        {
-            var data = (channel <= 0.00304) ?
-                (12.92 * channel) :
-                (1.055 * Math.Pow(channel, 1.0 / 2.4) - 0.055);
-            return (int)Math.Round(255 * data);
-        }
-
-        private double lab2xyz(double t)
-        {
-            return (t > LabConstants.t1) ?
-                (t * t * t) :
-                (LabConstants.t2 * (t - LabConstants.t0));
         }
     }
 }

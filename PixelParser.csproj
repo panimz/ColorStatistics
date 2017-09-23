@@ -60,8 +60,6 @@
     <Compile Include="Converters\Formats\LabColor.cs" />
     <Compile Include="Converters\Formats\HslColor.cs" />
     <Compile Include="Converters\Formats\LabConstants.cs" />
-    <Compile Include="Converters\LabConverter.cs" />
-    <Compile Include="Converters\XyzConverter.cs" />
     <Compile Include="Models\ColorStats.cs" />
     <Compile Include="Models\ImageStats.cs" />
     <Compile Include="Palette\ColorDistance.cs" />

@@ -6,51 +6,6 @@ namespace PixelParser.Converters
 {
     public static class ColorConverters
     {
-        public static LabColor ToLab(this Color color)
-        {
-            var red = ToXyzChannel(color.R);
-            var green = ToXyzChannel(color.G);
-            var blue = ToXyzChannel(color.B);
-
-            var x = ToLabChannel(0.4124564 * red + 0.3575761 * green + 0.1804375 * blue) / LabConstants.Xn;
-            var y = ToLabChannel(0.2126729 * red + 0.7151522 * green + 0.0721750 * blue) / LabConstants.Yn;
-            var z = ToLabChannel(0.0193339 * red + 0.1191920 * green + 0.9503041 * blue) / LabConstants.Zn;
-
-            var l = 116.0 * y - 16.0;
-            var a = 500.0 * (x - y);
-            var b = 200.0 * (y - z);
-
-            return new LabColor(l, a, b);
-        }
-
-        public static XyzColor ToXyz(this Color color)
-        {
-            var r = ToXyzChannel(color.R);
-            var g = ToXyzChannel(color.G);
-            var b = ToXyzChannel(color.B);
-
-            var x = ToLabChannel(0.4124564 * r + 0.3575761 * g + 0.1804375 * b) / LabConstants.Xn;
-            var y = ToLabChannel(0.2126729 * r + 0.7151522 * g + 0.0721750 * b) / LabConstants.Yn;
-            var z = ToLabChannel(0.0193339 * r + 0.1191920 * g + 0.9503041 * b) / LabConstants.Zn;
-
-            return new XyzColor(x, y, z);
-        }
-
-        private static double ToXyzChannel(byte channel)
-        {
-            var c = channel / 255.0;
-            return (c < 0.04045) ?
-                (c / 12.92) :
-                Math.Pow((c + 0.055) / 1.055, 2.4);
-        }
-
-        private static double ToLabChannel(double channel)
-        {
-            return (channel > LabConstants.t3) ?
-                Math.Pow(channel, 1 / 3.0) :
-                (channel / LabConstants.t2 + LabConstants.t0);
-        }
-
         public static HsvColor ToHsv(this Color color)
         {
             var r = color.R;
@@ -130,6 +85,35 @@ namespace PixelParser.Converters
         {
             var lab = color.ToLab();
             return lab.ToHcl();
+        }
+
+        public static LabColor ToLab(this Color color)
+        {
+            var xyz = color.ToXyz();
+            return xyz.ToLab();
+        }
+
+        public static XyzColor ToXyz(this Color color)
+        {
+            var r = ToXyzChannel(color.R);
+            var g = ToXyzChannel(color.G);
+            var b = ToXyzChannel(color.B);
+
+            // Observer. = 2°, Illuminant = D65
+            var x = r * 0.4124 + g * 0.3576 + b * 0.1805;
+            var y = r * 0.2126 + g * 0.7152 + b * 0.0722;
+            var z = r * 0.0193 + g * 0.1192 + b * 0.9505;
+
+            return new XyzColor(x, y, z);
+        }
+
+        private static double ToXyzChannel(byte channel)
+        {
+            var c = channel / 255.0;
+            var factor = (c > 0.04045) ?
+                Math.Pow((c + 0.055) / 1.055, 2.4) :
+                (c / 12.92);
+            return factor;
         }
     }
 }

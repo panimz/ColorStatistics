@@ -9,9 +9,9 @@ namespace PixelParser.Converters.Formats
         private static Random random = new Random();
 
         public static LabColor GetRandom() {
-            var l = 100 * random.NextDouble();
-            var a = 100 * (2 * random.NextDouble() - 1);
-            var b = 100 * (2 * random.NextDouble() - 1);
+            var l = random.Next(100);
+            var a = random.Next(-128, 128);
+            var b = random.Next(-128, 128);
             return new LabColor(l, a, b);
         }
 
@@ -26,23 +26,6 @@ namespace PixelParser.Converters.Formats
         public double A;
         public double B;
 
-        public Color ToRgb()
-        {
-            var y = (L + 16) / 116;
-            var x = double.IsNaN(A) ? y : (y + A / 500);
-            var z = double.IsNaN(B) ? y : (y - B / 200);
-
-            y = LabConstants.Yn * ConvertLabToXyz(y);
-            x = LabConstants.Xn * ConvertLabToXyz(x);
-            z = LabConstants.Zn * ConvertLabToXyz(z);
-
-            var r = ConvertXyzToRgb(3.2404542 * x - 1.5371385 * y - 0.4985314 * z);
-            var g = ConvertXyzToRgb(-0.9692660 * x + 1.8760108 * y + 0.0415560 * z);
-            var b = ConvertXyzToRgb(0.0556434 * x - 0.2040259 * y + 1.0572252 * z);
-
-            return Color.FromArgb(ClampChannel(r), ClampChannel(g), ClampChannel(b));
-        }
-
         public HclColor ToHcl()
         {
             var c = Math.Sqrt(A * A + B * B);
@@ -54,12 +37,31 @@ namespace PixelParser.Converters.Formats
             return new HclColor(h, c, L);
         }
 
-        private static double ConvertXyzToRgb(double r)
+        public Color ToRgb()
         {
-            var factor = (r <= 0.00304) ?
-                (12.92 * r) :
-                (1.055 * Math.Pow(r, 1 / 2.4) - 0.055);
-            return Math.Round(255 * factor);
+            var xyz = this.ToXyz();
+            return xyz.ToRgb();
+        }
+
+        public bool IsValidRgb()
+        {
+            var xyz = this.ToXyz();
+            return xyz.IsValidRgb();
+        }
+
+        public XyzColor ToXyz()
+        {
+            var y = (L + 16.0) / 116.0;
+            var x = A / 500.0 + y;
+            var z = y - B / 200.0;
+
+            var xyz = new XyzColor
+            {
+                X = LabConstants.Xn * ConvertLabToXyz(x),
+                Y = LabConstants.Yn * ConvertLabToXyz(y),
+                Z = LabConstants.Zn * ConvertLabToXyz(z),
+            };
+            return xyz;
         }
 
         private static double ConvertLabToXyz(double t)
@@ -67,13 +69,6 @@ namespace PixelParser.Converters.Formats
             return (t > LabConstants.t1) ?
                          (t * t * t) :
                          (LabConstants.t2 * (t - LabConstants.t0));
-        }
-
-        private static int ClampChannel(double channel)
-        {
-            if (channel < 0.0) { return 0; }
-            if (channel > 255.0) { return 255; }
-            return Convert.ToInt32(channel);
         }
 
         public override bool Equals(object obj)

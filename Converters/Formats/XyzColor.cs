@@ -17,20 +17,73 @@ namespace PixelParser.Converters.Formats
         public double Y;
         public double Z;
 
-        public Color ToRgb()
+        public LabColor ToLab()
         {
-            var r = ToRgbChannel(3.2404542 * X - 1.5371385 * Y - 0.4985314 * Z);
-            var g = ToRgbChannel(0.9692660 * X + 1.8760108 * Y + 0.0415560 * Z);
-            var b = ToRgbChannel(0.0556434 * X - 0.2040259 * Y + 1.0572252 * Z);
-            return Color.FromArgb(r, g, b);
+            var x = ToLabChannel(this.X / (LabConstants.Xn));
+            var y = ToLabChannel(this.Y / (LabConstants.Yn));
+            var z = ToLabChannel(this.Z / (LabConstants.Zn));
+
+            var l = Math.Max(0, 116 * y - 16);
+            var a = 500 * (x - y);
+            var b = 200 * (y - z);
+
+            return new LabColor(l, a, b);
         }
 
-        private static int ToRgbChannel(double channel)
+        public Color ToRgb()
         {
-            var c = (channel <= 0.00304) ?
-                (12.92 * channel) :
-                (1.055 * Math.Pow(channel, 1 / 2.4) - 0.055);
-            return (int)Math.Round(255 * c);
+            var r = ConvertXyzToRgb(3.2404542 * X - 1.5371385 * Y - 0.4985314 * Z);
+            var g = ConvertXyzToRgb(-0.9692660 * X + 1.8760108 * Y + 0.0415560 * Z);
+            var b = ConvertXyzToRgb(0.0556434 * X- 0.2040259 * Y + 1.0572252 * Z);
+
+            return Color.FromArgb(ClampChannel(r), ClampChannel(g), ClampChannel(b));
+        }
+
+        public bool IsValidRgb()
+        {
+            var r = ConvertXyzToRgb(3.2404542 * X - 1.5371385 * Y - 0.4985314 * Z);
+            if (!IsValidChannel(r))
+            {
+                return false;
+            }
+            var g = ConvertXyzToRgb(-0.9692660 * X + 1.8760108 * Y + 0.0415560 * Z);
+            if (!IsValidChannel(g))
+            {
+                return false;
+            }
+            var b = ConvertXyzToRgb(0.0556434 * X - 0.2040259 * Y + 1.0572252 * Z);
+            if (!IsValidChannel(b))
+            {
+                return false;
+            }
+            return true;
+        }
+
+        private static bool IsValidChannel(int channel)
+        {
+            return !(channel < 0 || channel > 255);
+        }
+
+        private static double ToLabChannel(double channel)
+        {
+            return (channel > LabConstants.t3) ?
+                Math.Pow(channel, 1 / 3.0) :
+                (channel / LabConstants.t2 + LabConstants.t0);
+        }
+
+        private static int ConvertXyzToRgb(double r)
+        {
+            var factor = (r <= 0.0031308) ?
+                (12.92 * r) :
+                (1.055 * Math.Pow(r, 1 / 2.4) - 0.055);
+            return (int)Math.Round(255.0 * factor);
+        }
+
+        private static int ClampChannel(int channel)
+        {
+            if (channel < 0) { return 0; }
+            if (channel > 255) { return 255; }
+            return channel;
         }
 
         public override int GetHashCode()
