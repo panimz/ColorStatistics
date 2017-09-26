@@ -68,6 +68,7 @@
     <Compile Include="Palette\GeneratorNew.cs" />
     <Compile Include="Palette\LabConstants.cs" />
     <Compile Include="Palette\LabVector.cs" />
+    <Compile Include="Palette\PaletteOptions.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="ColorQuantizer\ColorRange.cs" />

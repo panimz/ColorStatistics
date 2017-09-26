@@ -14,33 +14,11 @@ namespace PixelParser.Palette
     {
         private Dictionary<string, LabColor> simulateCache = new Dictionary<string, LabColor>();
 
-        public Color[] Generate(
-            int colorsCount = 8,
-            Predicate<LabColor> checkColor = null,
-            bool forceMode = false,
-            int quality = 50,
-            bool ultraPrecision = false,
+        public Color[] GenerateKMean(int colorsCount,
+            PaletteOptions options = null,
             ColorDistanceType distanceType = ColorDistanceType.Default)
         {
-            if (checkColor == null)
-            {
-                checkColor = (lab) => { return true; };
-            }
-            if (forceMode)
-            {
-                return GenerateForceVectorMode(colorsCount, checkColor, quality, ultraPrecision, distanceType);
-            }
-            else
-            {
-                return GenerateKMeanMode(colorsCount, checkColor, quality, ultraPrecision, distanceType);
-            }
-        }
-
-        private Color[] GenerateKMeanMode(int colorsCount,
-            Predicate<LabColor> checkColor,
-            int quality, bool ultraPrecision, 
-            ColorDistanceType distanceType)
-        {
+            options = options ?? PaletteOptions.GetDefault();
             var kMeans = new List<LabColor>();
             for (var i = 0; i < colorsCount; i++)
             {
@@ -52,14 +30,10 @@ namespace PixelParser.Palette
                 kMeans.Add(lab);
             }
 
-            var lStep = ultraPrecision ? 1 : 5;
-            var aStep = ultraPrecision ? 5 : 10;
-            var bStep = ultraPrecision ? 5 : 10;
-
-            var colorSamples = GenerateColorSamples(checkColor, lStep, aStep, bStep);
+            var colorSamples = GenerateColorSamples(options);
 
             // Steps
-            var steps = quality;
+            var steps = options.Quality;
             var samplesCount = colorSamples.Count;
             var samplesClosest = new int?[samplesCount];
             while (steps-- > 0)
@@ -106,7 +80,9 @@ namespace PixelParser.Palette
                         candidateKMean.B /= count;
                     }
 
-                    if (count != 0 && candidateKMean.IsValidRgb() && checkColor(candidateKMean))
+                    if (count != 0 && 
+                        candidateKMean.IsValidRgb() &&
+                        options.ValidateColor(candidateKMean))
                     {
                         kMeans[j] = candidateKMean;
                     }
@@ -155,42 +131,44 @@ namespace PixelParser.Palette
             return kMeans.Select((lab) => lab.ToRgb()).ToArray();
         }
 
-        private List<LabColor> GenerateColorSamples(Predicate<LabColor> checkColor, 
-            int lStep, int aStep, int bStep)
+        private List<LabColor> GenerateColorSamples(PaletteOptions options)
         {
-            var colorSamples = new List<LabColor>();
-            for (var l = 0; l <= 100; l += lStep)
+            var samples = new List<LabColor>();
+            var rangeDivider = Math.Pow(options.Samples, 1.0 / 3.0) * 1.001;
+
+            var hStep = (options.HueMax - options.HueMin) / rangeDivider;
+            var cStep = (options.ChromaMax - options.ChromaMin) / rangeDivider;
+            var lStep = (options.LightMax - options.LightMin) / rangeDivider;
+            for (double h = options.HueMin; h <= options.HueMax; h += hStep)
             {
-                for (var a = -100; a <= 100; a += aStep)
+                for (double c = options.ChromaMin; c <= options.ChromaMax; c += cStep)
                 {
-                    for (var b = -100; b <= 100; b += bStep)
+                    for (double l = options.LightMin; l <= options.LightMax; l += lStep)
                     {
-                        var color = new LabColor(l, a, b);
-                        if (color.IsValidRgb() && checkColor(color))
+                        var color = new HclColor(h, c, l).ToLab();
+                        if (color.IsValidRgb() && options.ValidateColor(color))
                         {
-                            colorSamples.Add(color);
+                            samples.Add(color);
                         }
                     }
                 }
             }
-            return colorSamples;
+            return samples;
         }
 
-        private Color[] GenerateForceVectorMode(int colorsCount,
-            Predicate<LabColor> checkColor,
-            int quality,
-            bool ultraPrecision,
-            ColorDistanceType distanceType)
+        public Color[] GenerateForce(int colorsCount,
+            PaletteOptions options = null,
+            ColorDistanceType distanceType = ColorDistanceType.Default)
         {
             var random = new Random();
             var colors = new LabColor[colorsCount];
-
+            options = options ?? PaletteOptions.GetDefault();
             // Init
             for (var i = 0; i < colorsCount; i++)
             {
                 // Find a valid Lab color
                 var color = LabColor.GetRandom();
-                while (color.IsValidRgb() || !checkColor(color))
+                while (color.IsValidRgb() || options.ValidateColor(color))
                 {
                     color = LabColor.GetRandom();
                 }
@@ -200,7 +178,7 @@ namespace PixelParser.Palette
             // Force vector: repulsion
             var repulsion = 100;
             var speed = 100;
-            var steps = quality * 20;
+            var steps = options.Quality * 20;
             var vectors = new LabVector[colorsCount];
             while (steps-- > 0)
             {
@@ -255,7 +233,7 @@ namespace PixelParser.Palette
                         var a = color.A + vectors[i].dA * ratio;
                         var b = color.B + vectors[i].dB * ratio;
                         var candidateLab = new LabColor(l, a, b);
-                        if (candidateLab.IsValidRgb() && checkColor(candidateLab))
+                        if (candidateLab.IsValidRgb() && options.ValidateColor(candidateLab))
                         {
                             colors[i] = candidateLab;
                         }

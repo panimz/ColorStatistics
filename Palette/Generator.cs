@@ -7,18 +7,6 @@ using System.Linq;
 
 namespace PixelParser.Palette
 {
-    public sealed class PaletteOptions
-    {
-        public int HueMin = 0;
-        public int HueMax = 360;
-        public int ChromaMin = 0;
-        public int ChromaMax = 100;
-        public int LightMin = 0;
-        public int LightMax = 100;
-        public int Quality = 50;
-        public int Samples = 800;
-    }
-
     public static class Generator
     {
         public static List<Color> GetPalette(int colorCount, PaletteOptions options = null)
